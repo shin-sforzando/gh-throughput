@@ -1,0 +1,96 @@
+name: "Issue/PR Throughput"
+description: "Track daily closed Issue/PR counts and open-issue backlog per assignee into a CSV, and render a self-contained HTML dashboard."
+author: "shin-sforzando"
+branding:
+  icon: "bar-chart-2"
+  color: "blue"
+
+inputs:
+  github-token:
+    description: "Token used to query the Search API. secrets.GITHUB_TOKEN is expected."
+    required: true
+  repo:
+    description: "Target repository (owner/name) to aggregate."
+    required: false
+    default: ${{ github.repository }}
+  assignees:
+    description: "Comma-separated GitHub usernames. Empty means auto-detect from the day's closed items."
+    required: false
+    default: ""
+  track:
+    description: "What to count: issue, pr, or both."
+    required: false
+    default: "both"
+  csv-path:
+    description: "Where the metrics CSV is persisted."
+    required: false
+    default: "metrics/throughput.csv"
+  html-path:
+    description: "Where the HTML dashboard is written."
+    required: false
+    default: "metrics/throughput.html"
+  timezone:
+    description: 'IANA timezone deciding the "today" boundary (e.g. Asia/Tokyo). UTC by default.'
+    required: false
+    default: "UTC"
+  ma-window:
+    description: "Moving-average window in days."
+    required: false
+    default: "7"
+  commit:
+    description: "Whether to commit and push the generated files."
+    required: false
+    default: "true"
+  commit-message:
+    description: "Commit message used when committing the metrics."
+    required: false
+    default: "chore: update throughput metrics"
+
+outputs:
+  csv-path:
+    description: "Path actually written for the CSV."
+    value: ${{ steps.collect.outputs.csv-path }}
+  html-path:
+    description: "Path actually written for the HTML dashboard."
+    value: ${{ steps.collect.outputs.html-path }}
+
+runs:
+  using: composite
+  steps:
+    - id: collect
+      shell: bash
+      # Inputs are passed as INPUT_* env vars, mirroring how JS actions receive
+      # them, so the plain Node script can read process.env directly.
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_REPO: ${{ inputs.repo }}
+        INPUT_ASSIGNEES: ${{ inputs.assignees }}
+        INPUT_TRACK: ${{ inputs.track }}
+        INPUT_CSV_PATH: ${{ inputs.csv-path }}
+        INPUT_HTML_PATH: ${{ inputs.html-path }}
+        INPUT_TIMEZONE: ${{ inputs.timezone }}
+        INPUT_MA_WINDOW: ${{ inputs.ma-window }}
+      run: node "$GITHUB_ACTION_PATH/src/collect.mjs"
+
+    - id: commit
+      if: ${{ inputs.commit == 'true' }}
+      shell: bash
+      env:
+        CSV_PATH: ${{ steps.collect.outputs.csv-path }}
+        HTML_PATH: ${{ steps.collect.outputs.html-path }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+      run: |
+        set -euo pipefail
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "$CSV_PATH" "$HTML_PATH"
+        # Skip an empty commit when nothing changed (e.g. a same-day re-run).
+        if git diff --cached --quiet; then
+          echo "No metric changes to commit."
+          exit 0
+        fi
+        git commit -m "$COMMIT_MESSAGE"
+        if ! git push; then
+          echo "::error::git push failed. Ensure the calling workflow sets 'permissions: contents: write'."
+          exit 1
+        fi

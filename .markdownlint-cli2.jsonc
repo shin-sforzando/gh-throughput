@@ -1,0 +1,14 @@
+{
+  // Respect .gitignore so node_modules and generated files are skipped.
+  "gitignore": true,
+  "config": {
+    "default": true,
+    // One-sentence-per-line prose deliberately produces long lines.
+    "MD013": false,
+    // Section headings intentionally end with a period in this project.
+    "MD026": false,
+    // Full-width (CJK) characters break visual pipe alignment in README.ja.md.
+    "MD060": false
+  },
+  "ignores": ["node_modules"]
+}

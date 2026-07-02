@@ -1,0 +1,22 @@
+# Git hooks. Activate with `mise run setup` (runs `lefthook install`).
+# Commands run through `mise exec` so the pinned tool versions resolve even
+# without shell activation.
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,mjs,cjs,ts,json,jsonc}"
+      run: mise exec -- biome check --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+    markdownlint:
+      glob: "*.md"
+      run: mise exec -- markdownlint-cli2 --fix {staged_files}
+      stage_fixed: true
+    # Sort Claude settings
+    sort-claude-settings:
+      run: |
+        if [ -f .claude/settings.local.json ]; then
+          jq --indent 2 '.permissions.allow |= sort' .claude/settings.local.json > .claude/.temp.$$.json && \
+          mv .claude/.temp.$$.json .claude/settings.local.json
+        fi
+      stage_fixed: true
