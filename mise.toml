@@ -1,0 +1,29 @@
+# Toolchain and task runner for developing this Action.
+# The Action itself has no runtime dependencies; everything here is dev-only.
+# Bootstrap: `mise install && mise run setup`
+
+[tools]
+node = "24"
+biome = "2.5.2"
+lefthook = "2.1.9"
+markdownlint-cli2 = "0.23.0"
+
+[tasks.check]
+description = "Lint & format check (Biome)"
+run = "biome check ."
+
+[tasks.fix]
+description = "Auto-fix and format with Biome"
+run = "biome check --write ."
+
+[tasks.lint-md]
+description = "Lint Markdown"
+run = 'markdownlint-cli2 "**/*.md"'
+
+[tasks.test]
+description = "Run the offline verification harness"
+run = "node test/verify.mjs"
+
+[tasks.setup]
+description = "Install git hooks via lefthook"
+run = "lefthook install"
