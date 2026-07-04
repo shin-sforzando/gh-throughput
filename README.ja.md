@@ -53,6 +53,7 @@ jobs:
 | `track`          | –    | `both`                             | `issue` / `pr` / `both`。                                    |
 | `csv-path`       | –    | `metrics/throughput.csv`           | CSV の永続化先。                                             |
 | `html-path`      | –    | `metrics/throughput.html`          | HTML ダッシュボードの出力先。                                |
+| `branch`         | –    | _(空 → チェックアウト中のブランチ)_ | metrics を commit する専用の orphan ブランチ(例 `metrics`)。default ブランチが PR 必須のときに使う。 |
 | `timezone`       | –    | `UTC`                              | 「当日」の境界を決める IANA タイムゾーン(例: `Asia/Tokyo`)。 |
 | `ma-window`      | –    | `7`                                | 移動平均の窓幅(日)。                                         |
 | `commit`         | –    | `true`                             | 生成物を commit / push するか。                              |
@@ -110,6 +111,18 @@ backlog は各実行時点のスナップショットです。意味のある時
 
 `commit: true` のとき `contents: write` が呼び出し側ワークフローに必要です。これが無いと push はこの設定を指し示すエラーで失敗します。
 また `permissions:` ブロックを書くと未記載スコープはすべて `none` になるため、`issues: read` と `pull-requests: read` も付与してください。Search API がこれらを必要とし、private リポジトリでは無いと集計が 403 で失敗します。
+
+### 保護された default ブランチ
+
+default ブランチが PR 必須(branch ruleset / protection)の場合、Action は直接 push できず run が失敗します。
+`branch` 入力に専用名(例 `branch: metrics`)を指定すると、その **orphan** ブランチへ commit します。metrics だけを持ち、初回実行時に作成され、保護対象ブランチには一切触れません。ダッシュボードはそのブランチから閲覧します(GitHub Pages 配信も可)。
+
+```yaml
+- uses: shin-sforzando/gh-throughput@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    branch: metrics
+```
 
 ### 他リポジトリ集計は現状スコープ外
 
