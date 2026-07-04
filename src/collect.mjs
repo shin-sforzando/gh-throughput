@@ -1,4 +1,4 @@
-// gh-throughput: collect closed Issue/PR counts and backlog snapshot, then
+// gh-throughput: collect closed-Issue counts and backlog snapshot, then
 // append to a CSV and (re)generate a self-contained HTML dashboard.
 //
 // Why a composite action calling plain Node: no npm deps, no bundling. Inputs
@@ -7,7 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { renderHtml } from "./template.mjs";
+import { loadTemplate, renderHtml } from "./template.mjs";
 
 const GITHUB_API = "https://api.github.com";
 const USER_AGENT = "gh-throughput-action";
@@ -27,10 +27,6 @@ function readInputs(env = process.env) {
   if (!repo.includes("/")) {
     throw new Error(`repo input must be "owner/name", got: "${repo}"`);
   }
-  const track = (env.INPUT_TRACK || "both").trim();
-  if (!["issue", "pr", "both"].includes(track)) {
-    throw new Error(`track must be issue|pr|both, got: "${track}"`);
-  }
   return {
     token,
     repo,
@@ -38,9 +34,11 @@ function readInputs(env = process.env) {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
-    track,
     csvPath: (env.INPUT_CSV_PATH || "metrics/throughput.csv").trim(),
     htmlPath: (env.INPUT_HTML_PATH || "metrics/throughput.html").trim(),
+    // Empty means the bundled default template; a path is resolved against the
+    // working directory so users can point at their own design.
+    templatePath: (env.INPUT_TEMPLATE_PATH || "").trim(),
     timezone: (env.INPUT_TIMEZONE || "UTC").trim(),
     maWindow: Math.max(1, parseInt(env.INPUT_MA_WINDOW || "7", 10) || 7),
   };
@@ -216,10 +214,11 @@ export async function main(env = process.env, now = new Date()) {
   const day = localDate(now, cfg.timezone);
   const offset = tzOffset(now, cfg.timezone);
 
-  const trackFilter =
-    cfg.track === "issue" ? " is:issue" : cfg.track === "pr" ? " is:pr" : "";
-  const closedQuery = `repo:${cfg.repo}${trackFilter} ${closedQualifier(day, offset)}`;
-  console.log(`Collecting closed items: ${closedQuery}`);
+  // Issues only. PR "closed" is muddier (merges vs closes, and PRs are seldom
+  // assigned), and the backlog is issues-only, so keeping throughput to Issues
+  // keeps both axes measuring the same kind of work.
+  const closedQuery = `repo:${cfg.repo} is:issue ${closedQualifier(day, offset)}`;
+  console.log(`Collecting closed issues: ${closedQuery}`);
   const { items } = await searchAll(closedQuery, cfg.token);
 
   const counts = aggregate(items, cfg.assignees);
@@ -237,9 +236,15 @@ export async function main(env = process.env, now = new Date()) {
   const rows = buildRows(day, counts, backlog);
   appendCsv(cfg.csvPath, rows);
 
+  const template = loadTemplate(
+    cfg.templatePath ? path.resolve(cfg.templatePath) : undefined,
+  );
   const html = renderHtml(fs.readFileSync(cfg.csvPath, "utf8"), {
     maWindow: cfg.maWindow,
     repo: cfg.repo,
+    template,
+    generatedAt: now.toISOString(),
+    timezone: cfg.timezone,
   });
   fs.mkdirSync(path.dirname(cfg.htmlPath), { recursive: true });
   fs.writeFileSync(cfg.htmlPath, html);

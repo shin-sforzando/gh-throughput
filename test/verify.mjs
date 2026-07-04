@@ -39,7 +39,6 @@ async function runDay(dateIso, items, backlog) {
     INPUT_GITHUB_TOKEN: "x",
     INPUT_REPO: "shin-sforzando/rendez-vous",
     INPUT_ASSIGNEES: "", // auto-detect, so sentinel path is exercised
-    INPUT_TRACK: "both",
     INPUT_CSV_PATH: csvPath,
     INPUT_HTML_PATH: htmlPath,
     INPUT_TIMEZONE: "UTC",
@@ -97,6 +96,15 @@ assert.ok(html.includes("hammer.min.js"), "hammer.js CDN present");
 assert.ok(html.includes("const DATA ="), "inlined data present");
 assert.ok(html.includes('"alice"'), "alice series in data");
 assert.ok(!html.includes("</script></script>"), "no broken script tags");
+// Redesign: Basecoat styling, linked logins, and no leftover placeholders.
+assert.ok(html.includes("basecoat-css@"), "Basecoat CDN present");
+assert.ok(
+  html.includes('"https://github.com/" + encodeURIComponent(a.login)'),
+  "logins are linked to GitHub profiles",
+);
+assert.ok(html.includes('"generatedAt"'), "generation timestamp is inlined");
+assert.ok(!html.includes("{{DATA}}"), "DATA placeholder was substituted");
+assert.ok(!html.includes("{{TITLE}}"), "TITLE placeholder was substituted");
 
 console.log(`\nAll assertions passed. HTML at: ${htmlPath}`);
 // Emit the html path so a caller can open it in a browser for the visual check.
