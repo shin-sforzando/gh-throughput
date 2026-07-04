@@ -1,5 +1,5 @@
-name: "Issue/PR Throughput"
-description: "Track daily closed Issue/PR counts and open-issue backlog per assignee into a CSV, and render a self-contained HTML dashboard."
+name: "Issue Throughput"
+description: "Track daily closed Issue counts and open-issue backlog per assignee into a CSV, and render a self-contained HTML dashboard."
 author: "shin-sforzando"
 branding:
   icon: "bar-chart-2"
@@ -17,10 +17,6 @@ inputs:
     description: "Comma-separated GitHub usernames. Empty means auto-detect from the day's closed items."
     required: false
     default: ""
-  track:
-    description: "What to count: issue, pr, or both."
-    required: false
-    default: "both"
   csv-path:
     description: "Where the metrics CSV is persisted."
     required: false
@@ -29,6 +25,10 @@ inputs:
     description: "Where the HTML dashboard is written."
     required: false
     default: "metrics/throughput.html"
+  template-path:
+    description: "Custom HTML template for the dashboard. Empty uses the bundled Basecoat-styled default. Must keep the {{DATA}} placeholder; {{TITLE}} is optional."
+    required: false
+    default: ""
   branch:
     description: "Dedicated orphan branch to commit metrics to (e.g. metrics). Empty commits to the checked-out branch. Use this when the default branch requires pull requests."
     required: false
@@ -69,9 +69,9 @@ runs:
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_REPO: ${{ inputs.repo }}
         INPUT_ASSIGNEES: ${{ inputs.assignees }}
-        INPUT_TRACK: ${{ inputs.track }}
         INPUT_CSV_PATH: ${{ inputs.csv-path }}
         INPUT_HTML_PATH: ${{ inputs.html-path }}
+        INPUT_TEMPLATE_PATH: ${{ inputs.template-path }}
         INPUT_TIMEZONE: ${{ inputs.timezone }}
         INPUT_MA_WINDOW: ${{ inputs.ma-window }}
         BRANCH: ${{ inputs.branch }}

@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-外部データベースに依存せず、リポジトリの担当者ごとの日次 Issue/PR 消化数とオープンIssueの残数を可視化する、再利用可能な **composite GitHub Action** です。
+外部データベースに依存せず、リポジトリの担当者ごとの日次 Issue 消化数とオープンIssueの残数を可視化する、再利用可能な **composite GitHub Action** です。
 データは Action を利用するリポジトリ内に CSV として永続化され、その隣に自己完結型の HTML ダッシュボードが生成されます。
 既定では全員を追跡し、`assignees` 入力で対象を絞れます。
 
@@ -50,9 +50,9 @@ jobs:
 | `github-token`   | ✅   | –                                  | Search API 用トークン。`secrets.GITHUB_TOKEN` を想定。       |
 | `repo`           | –    | `${{ github.repository }}`         | 集計対象リポジトリ `owner/name`。                            |
 | `assignees`      | –    | _(空 → 自動検出)_                  | カンマ区切りの GitHub ユーザー名。                           |
-| `track`          | –    | `both`                             | `issue` / `pr` / `both`。                                    |
 | `csv-path`       | –    | `metrics/throughput.csv`           | CSV の永続化先。                                             |
 | `html-path`      | –    | `metrics/throughput.html`          | HTML ダッシュボードの出力先。                                |
+| `template-path`  | –    | _(空 → 同梱の既定テンプレート)_    | ダッシュボードの独自 HTML テンプレート。`{{DATA}}` プレースホルダは必須。 |
 | `branch`         | –    | _(空 → チェックアウト中のブランチ)_ | metrics を commit する専用の orphan ブランチ(例 `metrics`)。default ブランチが PR 必須のときに使う。 |
 | `timezone`       | –    | `UTC`                              | 「当日」の境界を決める IANA タイムゾーン(例: `Asia/Tokyo`)。 |
 | `ma-window`      | –    | `7`                                | 移動平均の窓幅(日)。                                         |
@@ -76,7 +76,7 @@ date,assignee,closed,backlog
 
 - `date` — 設定した `timezone` における暦日(`YYYY-MM-DD`)。
 - `assignee` — GitHub ユーザー名。**空**の値は番兵行で、その日に誰もクローズしなかった場合に backlog だけを担持します(backlog の時系列を途切れさせないため)。
-- `closed` — その日にそのユーザーがクローズした Issue/PR 数。
+- `closed` — その日にそのユーザーがクローズした Issue 数。
 - `backlog` — その時点のリポジトリ全体のオープンIssue数。同じ日の全行で同値です(冗長ですが実装をシンプルに保つため)。
 - 同じ日に再実行しても行は重複しません(`date` + `assignee` について冪等)。
 

@@ -1,0 +1,680 @@
+<!doctype html>
+<!--
+  gh-throughput default dashboard template.
+
+  This file is the *presentation* layer: all markup, styling, and chart
+  configuration live here so it can be swapped wholesale via the action's
+  `template-path` input without touching the data logic in template.mjs.
+
+  renderHtml() injects two placeholders and nothing else:
+    {{TITLE}}  -> the <title> text (already HTML-escaped)
+    {{DATA}}   -> a JSON object: { dates, assignees, teamMA, backlog, maWindow, repo }
+                  ({{DATA}} is emitted as valid JSON with "<" escaped)
+  Everything else (header text, repo link, legend) is derived from DATA at
+  runtime, so a custom template only needs to keep the {{DATA}} placeholder.
+
+  Styling uses Basecoat (Tailwind CSS + shadcn-compatible tokens) loaded from a
+  CDN. Basecoat's dark mode keys off a `.dark` class on <html>, so we toggle it
+  from JS (OS preference by default, with a manual override persisted locally).
+-->
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{{TITLE}}</title>
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.1/dist/basecoat.cdn.min.css"
+        />
+        <script>
+            // Set the theme before first paint to avoid a light->dark flash. Basecoat
+            // reads `.dark` on the root element; default to the OS preference unless the
+            // viewer has explicitly chosen a theme on this page before.
+            (function () {
+                var saved = null;
+                try {
+                    saved = localStorage.getItem("gh-throughput-theme");
+                } catch (e) {}
+                var dark = saved
+                    ? saved === "dark"
+                    : matchMedia("(prefers-color-scheme: dark)").matches;
+                document.documentElement.classList.toggle("dark", dark);
+            })();
+        </script>
+        <style>
+            /* Layout is authored against Basecoat's design tokens (not arbitrary Tailwind
+               utilities, which a prebuilt CDN bundle does not guarantee), so it stays in
+               lockstep with the component palette in both light and dark. */
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                height: 100%;
+            }
+            body {
+                margin: 0;
+                /* Monospace throughout: figures line up column-wise, which suits a metrics
+                   dashboard. --font-mono comes from Basecoat's Tailwind token layer. */
+                font-family: var(
+                    --font-mono,
+                    ui-monospace,
+                    SFMono-Regular,
+                    Menlo,
+                    Consolas,
+                    monospace
+                );
+                background: var(--background);
+                color: var(--foreground);
+                display: flex;
+                flex-direction: column;
+            }
+            header {
+                padding: 14px 20px;
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                align-items: flex-start;
+                gap: 16px;
+                flex-wrap: wrap;
+            }
+            .title-block {
+                flex: 1 1 auto;
+                min-width: 0;
+            }
+            h1 {
+                font-size: 1.05rem;
+                line-height: 1.3;
+                margin: 0;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            h1 a {
+                color: var(--primary);
+                text-decoration: none;
+            }
+            h1 a:hover {
+                text-decoration: underline;
+            }
+            .hint {
+                font-size: 0.8rem;
+                color: var(--muted-foreground);
+                margin-top: 6px;
+            }
+            .controls {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+            main {
+                flex: 1 1 auto;
+                padding: 16px 20px 20px;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+            }
+            .card {
+                flex: 1 1 auto;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                min-height: 0;
+                padding: 16px;
+            }
+            .chart-wrap {
+                position: relative;
+                flex: 1 1 auto;
+                min-height: 0;
+            }
+            /* Custom, HTML-based legend so GitHub logins can be real links (a canvas
+               legend cannot hold anchors) and can carry avatars + toggle behaviour. */
+            .legend {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .legend-key,
+            .legend-series {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 7px 14px;
+                align-items: center;
+            }
+            .legend-key {
+                font-size: 0.78rem;
+                color: var(--muted-foreground);
+            }
+            .key-item {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            /* Small mark samples that spell out the encoding right in the legend, so the
+               header no longer has to describe every line style in prose. */
+            .mark {
+                display: inline-block;
+                flex: 0 0 auto;
+            }
+            .mark.thin {
+                width: 22px;
+                border-top: 1.5px solid currentColor;
+                opacity: 0.7;
+            }
+            .mark.thick {
+                width: 22px;
+                border-top: 3px solid currentColor;
+            }
+            .legend-item {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .swatch {
+                width: 14px;
+                height: 14px;
+                border-radius: 4px;
+                border: 1px solid
+                    color-mix(in oklab, var(--foreground) 20%, transparent);
+                background: var(--c);
+                cursor: pointer;
+                padding: 0;
+                flex: 0 0 auto;
+                transition:
+                    opacity 0.15s,
+                    transform 0.1s;
+            }
+            .swatch.dash {
+                width: 20px;
+                height: 0;
+                border: none;
+                border-top: 3px dashed var(--c);
+                border-radius: 0;
+            }
+            .swatch:active {
+                transform: scale(0.9);
+            }
+            .legend-item.off .swatch {
+                opacity: 0.3;
+            }
+            .legend-item.off .badge {
+                opacity: 0.45;
+                text-decoration: line-through;
+            }
+            .badge .ava {
+                width: 16px;
+                height: 16px;
+                border-radius: 9999px;
+            }
+            .badge.static {
+                cursor: default;
+            }
+            /* Spotlight cue: the hovered person whose daily actuals are showing. */
+            .legend-item.spot .badge {
+                background: var(--muted);
+                border-color: var(--ring);
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div class="title-block">
+                <h1 id="heading">Issue Throughput</h1>
+                <div class="hint" id="hint"></div>
+            </div>
+            <div class="controls">
+                <button
+                    class="btn"
+                    data-variant="outline"
+                    id="theme"
+                    type="button"
+                    aria-label="Toggle color theme"
+                >
+                    Theme
+                </button>
+                <button
+                    class="btn"
+                    data-variant="outline"
+                    id="reset"
+                    type="button"
+                >
+                    Reset zoom
+                </button>
+            </div>
+        </header>
+        <main>
+            <div class="card">
+                <div class="chart-wrap">
+                    <canvas
+                        id="chart"
+                        role="img"
+                        aria-label="Daily closed Issues per assignee with team average and open-issue backlog"
+                    ></canvas>
+                </div>
+                <div class="legend">
+                    <div class="legend-key" id="legend-key"></div>
+                    <div class="legend-series" id="legend-series"></div>
+                </div>
+            </div>
+        </main>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+        <script>
+            const DATA = {{DATA}};
+            const root = document.documentElement;
+
+            // --- header: append the repo link and set the tab title. The dashboard
+            // always tracks closed Issues (see the action's collection query), which
+            // keeps it consistent with the open-issue backlog.
+            const heading = document.getElementById("heading");
+            if (DATA.repo) {
+                heading.insertAdjacentHTML(
+                    "beforeend",
+                    ` — <a href="https://github.com/${encodeURIComponent(DATA.repo)}" target="_blank" rel="noopener">${DATA.repo}</a>`,
+                );
+            }
+            document.title =
+                "Issue Throughput" + (DATA.repo ? " — " + DATA.repo : "");
+            // The legend below now carries the full explanation of the visual encoding, so
+            // the header only shows when the dashboard was generated plus the interaction
+            // hint. Format the generation time in the configured timezone (the same zone
+            // that defines the daily boundary), falling back to UTC.
+            function fmtTime(iso, tz) {
+                if (!iso) return "";
+                try {
+                    const s = new Intl.DateTimeFormat("en-CA", {
+                        timeZone: tz || "UTC",
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                        hourCycle: "h23",
+                    }).format(new Date(iso));
+                    return s + (tz && tz !== "UTC" ? ` (${tz})` : " UTC");
+                } catch (e) {
+                    return iso;
+                }
+            }
+            const hintBits = [];
+            if (DATA.generatedAt) {
+                hintBits.push(
+                    "Generated " + fmtTime(DATA.generatedAt, DATA.timezone),
+                );
+            }
+            hintBits.push("scroll to zoom · drag to pan");
+            document.getElementById("hint").textContent = hintBits.join(" · ");
+
+            // --- weekday helper (UTC parse so the label date is not shifted by local TZ).
+            // Returns -1 for a missing label: Chart.js may invoke the tick-color callback
+            // once with an out-of-range index, which must not throw.
+            function dow(label) {
+                if (!label) return -1;
+                const [y, m, d] = label.split("-").map(Number);
+                return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Sun … 6=Sat
+            }
+
+            // --- theme-dependent colors. Chart.js draws to a canvas, so we feed it plain
+            // color strings we control rather than relying on CSS cascade for the plot.
+            function palette() {
+                const dark = root.classList.contains("dark");
+                return {
+                    dark,
+                    text: dark ? "#a1a1aa" : "#52525b",
+                    grid: dark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.08)",
+                    sat: dark ? "#60a5fa" : "#2563eb", // Saturday = blue (JP calendar convention)
+                    sun: dark ? "#f87171" : "#dc2626", // Sunday = red
+                    satBand: dark
+                        ? "rgba(96,165,250,.10)"
+                        : "rgba(37,99,235,.07)",
+                    sunBand: dark
+                        ? "rgba(248,113,113,.10)"
+                        : "rgba(220,38,38,.07)",
+                    team: dark ? "#9ca3af" : "#6b7280",
+                };
+            }
+
+            // --- build datasets. The default view shows only the moving-average
+            // lines; each person's noisy daily actuals stay hidden and are revealed
+            // one at a time on legend hover ("spotlight"), which keeps four people's
+            // signals from piling up. assigneeDatasets maps login -> {raw, ma}.
+            const datasets = [];
+            const assigneeDatasets = {};
+            for (const a of DATA.assignees) {
+                const rawIdx = datasets.length;
+                datasets.push({
+                    // Hidden by default; shown alone on hover as dots + a thin line, so
+                    // the spotlighted person's daily values read clearly against their
+                    // own thick average. spanGaps:false keeps missing days as gaps.
+                    type: "line",
+                    label: a.login + " (actual)",
+                    data: a.raw,
+                    borderColor: a.color,
+                    backgroundColor: a.color,
+                    borderWidth: 1,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    showLine: true,
+                    spanGaps: false,
+                    tension: 0,
+                    yAxisID: "y",
+                    hidden: true,
+                });
+                const maIdx = datasets.length;
+                datasets.push({
+                    type: "line",
+                    label: a.login + " (avg)",
+                    data: a.ma,
+                    borderColor: a.color,
+                    backgroundColor: a.color,
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    tension: 0.25,
+                    yAxisID: "y",
+                });
+                assigneeDatasets[a.login] = { raw: rawIdx, ma: maIdx };
+            }
+            const teamIdx = datasets.length;
+            datasets.push({
+                type: "line",
+                label: "Team average",
+                data: DATA.teamMA,
+                borderDash: [6, 4],
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.25,
+                yAxisID: "y",
+            });
+            const backlogIdx = datasets.length;
+            datasets.push({
+                type: "bar",
+                label: "Backlog (open issues)",
+                data: DATA.backlog,
+                backgroundColor: "rgba(148,163,184,.35)",
+                borderColor: "rgba(148,163,184,.6)",
+                borderWidth: 1,
+                yAxisID: "y1",
+                order: 99,
+            });
+
+            // --- weekend background bands, drawn behind the data.
+            const weekendBands = {
+                id: "weekendBands",
+                beforeDatasetsDraw(chart) {
+                    const area = chart.chartArea;
+                    const x = chart.scales.x;
+                    if (!area) return;
+                    const p = palette();
+                    const half =
+                        (area.right - area.left) /
+                        Math.max(DATA.dates.length, 1) /
+                        2;
+                    chart.ctx.save();
+                    for (let i = 0; i < DATA.dates.length; i++) {
+                        const wd = dow(DATA.dates[i]);
+                        if (wd !== 0 && wd !== 6) continue;
+                        const cx = x.getPixelForValue(i);
+                        chart.ctx.fillStyle = wd === 6 ? p.satBand : p.sunBand;
+                        chart.ctx.fillRect(
+                            cx - half,
+                            area.top,
+                            half * 2,
+                            area.bottom - area.top,
+                        );
+                    }
+                    chart.ctx.restore();
+                },
+            };
+
+            // Match the canvas-drawn axis text to the page's monospace font.
+            Chart.defaults.font.family =
+                getComputedStyle(root).getPropertyValue("--font-mono").trim() ||
+                "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+
+            // Pin the left axis to the full data range (daily actuals included, even
+            // though they start hidden), so the scale never jumps when a person's
+            // actuals are spotlighted on hover. Round up to a "nice" bound.
+            function niceCeil(v) {
+                if (v <= 0) return 1;
+                const pow = 10 ** Math.floor(Math.log10(v));
+                const n = v / pow;
+                const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+                return step * pow;
+            }
+            let maxDaily = 0;
+            for (const a of DATA.assignees) {
+                for (const v of a.raw)
+                    if (v != null && v > maxDaily) maxDaily = v;
+                for (const v of a.ma)
+                    if (v != null && v > maxDaily) maxDaily = v;
+            }
+            for (const v of DATA.teamMA)
+                if (v != null && v > maxDaily) maxDaily = v;
+            const yMax = niceCeil(maxDaily);
+
+            const chart = new Chart(document.getElementById("chart"), {
+                data: { labels: DATA.dates, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: "nearest", intersect: false },
+                    stacked: false,
+                    scales: {
+                        x: {
+                            type: "category",
+                            title: { display: true, text: "Date" },
+                        },
+                        y: {
+                            type: "linear",
+                            position: "left",
+                            beginAtZero: true,
+                            max: yMax, // fixed so spotlighting actuals never rescales the axis
+                            title: {
+                                display: true,
+                                text: "Daily closed Issues",
+                            },
+                        },
+                        y1: {
+                            type: "linear",
+                            position: "right",
+                            beginAtZero: true,
+                            grid: { drawOnChartArea: false },
+                            title: {
+                                display: true,
+                                text: "Backlog (open issues)",
+                            },
+                        },
+                    },
+                    plugins: {
+                        legend: { display: false }, // replaced by the HTML legend below
+                        zoom: {
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: "x",
+                            },
+                            pan: { enabled: true, mode: "x" },
+                        },
+                    },
+                },
+                plugins: [weekendBands],
+            });
+
+            // Apply theme-dependent colors to axes/grid/ticks and the team line, then draw.
+            function applyChartTheme() {
+                const p = palette();
+                for (const axis of ["x", "y", "y1"]) {
+                    const s = chart.options.scales[axis];
+                    s.grid = { ...(s.grid || {}), color: p.grid };
+                    s.border = { ...(s.border || {}), color: p.grid };
+                    s.title = { ...(s.title || {}), color: p.text };
+                    s.ticks = { ...(s.ticks || {}), color: p.text };
+                }
+                // Colour weekend date labels (Sat blue, Sun red); weekdays use the base text.
+                chart.options.scales.x.ticks.color = (ctx) => {
+                    const wd = dow(DATA.dates[ctx.index]);
+                    return wd === 6 ? p.sat : wd === 0 ? p.sun : p.text;
+                };
+                chart.data.datasets[teamIdx].borderColor = p.team;
+                // Keep the team-average legend swatch in sync with the theme (guarded:
+                // the legend is built after the first call). Per-person swatches use
+                // fixed palette colors and need no update.
+                const teamSw = document.querySelector(
+                    '[data-role="team-swatch"]',
+                );
+                if (teamSw) teamSw.style.setProperty("--c", p.team);
+                chart.update();
+            }
+            applyChartTheme();
+
+            // --- HTML legend. The key row spells out the encoding (so the header stays
+            // terse); the series row lets each series be toggled and links people to their
+            // GitHub profiles (a canvas legend cannot hold anchors or avatars).
+            const key = document.getElementById("legend-key");
+            function keyItem(markClass, text, vars) {
+                const el = document.createElement("span");
+                el.className = "key-item";
+                const mark = document.createElement("span");
+                mark.className = "mark " + markClass;
+                if (vars) {
+                    for (const [k, v] of Object.entries(vars))
+                        mark.style.setProperty(k, v);
+                }
+                const label = document.createElement("span");
+                label.textContent = text;
+                el.append(mark, label);
+                return el;
+            }
+            const p0 = palette();
+            // Weekend shading is self-evident from the coloured bands + labels, so
+            // it needs no legend entry.
+            key.append(
+                keyItem("thick", DATA.maWindow + "-day average"),
+                keyItem("thin", "daily actual on hover a name"),
+            );
+
+            const series = document.getElementById("legend-series");
+            // toggleIdxs: datasets shown/hidden by clicking the swatch.
+            // spotlightIdx: a hidden "daily actual" dataset revealed only while the
+            // item is hovered, and only if the series is currently toggled on.
+            function seriesItem({
+                label,
+                toggleIdxs,
+                spotlightIdx,
+                color,
+                dash,
+                href,
+                role,
+            }) {
+                const item = document.createElement("div");
+                item.className = "legend-item";
+                const swatch = document.createElement("button");
+                swatch.className = "swatch" + (dash ? " dash" : "");
+                swatch.type = "button";
+                swatch.style.setProperty("--c", color);
+                swatch.title = "Toggle " + label;
+                if (role) swatch.dataset.role = role;
+
+                let labelEl;
+                if (href) {
+                    labelEl = document.createElement("a");
+                    labelEl.className = "badge";
+                    labelEl.setAttribute("data-variant", "outline");
+                    labelEl.href = href;
+                    labelEl.target = "_blank";
+                    labelEl.rel = "noopener";
+                    const ava = document.createElement("img");
+                    ava.className = "ava";
+                    ava.alt = "";
+                    ava.src = href + ".png?size=32";
+                    ava.addEventListener("error", () => ava.remove()); // graceful offline fallback
+                    labelEl.append(ava, document.createTextNode("@" + label));
+                } else {
+                    labelEl = document.createElement("span");
+                    labelEl.className = "badge static";
+                    labelEl.setAttribute("data-variant", "outline");
+                    labelEl.textContent = label;
+                }
+
+                swatch.addEventListener("click", () => {
+                    const show = !chart.isDatasetVisible(toggleIdxs[0]);
+                    for (const idx of toggleIdxs)
+                        chart.setDatasetVisibility(idx, show);
+                    if (!show && spotlightIdx != null) {
+                        chart.setDatasetVisibility(spotlightIdx, false); // drop spotlight when hiding
+                    }
+                    item.classList.toggle("off", !show);
+                    chart.update();
+                });
+
+                if (spotlightIdx != null) {
+                    item.addEventListener("mouseenter", () => {
+                        if (!chart.isDatasetVisible(toggleIdxs[0])) return; // series is off
+                        chart.setDatasetVisibility(spotlightIdx, true);
+                        item.classList.add("spot");
+                        chart.update("none");
+                    });
+                    item.addEventListener("mouseleave", () => {
+                        chart.setDatasetVisibility(spotlightIdx, false);
+                        item.classList.remove("spot");
+                        chart.update("none");
+                    });
+                }
+
+                item.append(swatch, labelEl);
+                series.appendChild(item);
+            }
+            for (const a of DATA.assignees) {
+                const d = assigneeDatasets[a.login];
+                seriesItem({
+                    label: a.login,
+                    toggleIdxs: [d.ma],
+                    spotlightIdx: d.raw,
+                    color: a.color,
+                    href: "https://github.com/" + encodeURIComponent(a.login),
+                });
+            }
+            seriesItem({
+                label: "Team average",
+                toggleIdxs: [teamIdx],
+                color: p0.team,
+                dash: true,
+                role: "team-swatch",
+            });
+            seriesItem({
+                label: "Backlog",
+                toggleIdxs: [backlogIdx],
+                color: "rgb(148,163,184)",
+            });
+
+            // --- controls
+            document
+                .getElementById("reset")
+                .addEventListener("click", () => chart.resetZoom());
+            document.getElementById("theme").addEventListener("click", () => {
+                const dark = !root.classList.contains("dark");
+                root.classList.toggle("dark", dark);
+                try {
+                    localStorage.setItem(
+                        "gh-throughput-theme",
+                        dark ? "dark" : "light",
+                    );
+                } catch (e) {}
+                applyChartTheme();
+            });
+            // Follow OS theme changes unless the viewer has pinned a choice on this page.
+            matchMedia("(prefers-color-scheme: dark)").addEventListener(
+                "change",
+                (e) => {
+                    let saved = null;
+                    try {
+                        saved = localStorage.getItem("gh-throughput-theme");
+                    } catch (err) {}
+                    if (saved) return;
+                    root.classList.toggle("dark", e.matches);
+                    applyChartTheme();
+                },
+            );
+        </script>
+    </body>
+</html>

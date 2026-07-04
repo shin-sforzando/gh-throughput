@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-A reusable **composite GitHub Action** that visualizes per-assignee daily Issue/PR throughput and the open-issue backlog for a repository, with no external database.
+A reusable **composite GitHub Action** that visualizes per-assignee daily closed-Issue throughput and the open-issue backlog for a repository, with no external database.
 Data is persisted as a CSV inside the repository that uses the Action, and a self-contained HTML dashboard is generated alongside it.
 Track everyone by default, or narrow the set with the `assignees` input.
 
@@ -50,9 +50,9 @@ UTC calendar day.
 | `github-token`   | ✅       | –                                  | Token for the Search API. `secrets.GITHUB_TOKEN` is expected.    |
 | `repo`           | –        | `${{ github.repository }}`         | Target repository `owner/name`.                                  |
 | `assignees`      | –        | _(empty → auto-detect)_            | Comma-separated GitHub usernames.                                |
-| `track`          | –        | `both`                             | `issue`, `pr`, or `both`.                                        |
 | `csv-path`       | –        | `metrics/throughput.csv`           | Where the CSV is persisted.                                      |
 | `html-path`      | –        | `metrics/throughput.html`          | Where the HTML dashboard is written.                             |
+| `template-path`  | –        | _(empty → bundled default)_        | Custom HTML dashboard template. Must keep the `{{DATA}}` placeholder. |
 | `branch`         | –        | _(empty → checked-out branch)_     | Dedicated orphan branch to commit metrics to (e.g. `metrics`). Use it when the default branch requires pull requests. |
 | `timezone`       | –        | `UTC`                              | IANA timezone deciding the "today" boundary (e.g. `Asia/Tokyo`). |
 | `ma-window`      | –        | `7`                                | Moving-average window in days.                                   |
@@ -78,7 +78,7 @@ date,assignee,closed,backlog
 - `assignee` — GitHub username. An **empty** value is a sentinel row that only
   carries the backlog for a day on which no assignee closed anything (keeps the
   backlog series continuous).
-- `closed` — Issue/PR that user closed that day.
+- `closed` — Issues that user closed that day.
 - `backlog` — repository-wide open-issue count at that time. It is the same for
   every row of the same day (redundant, but keeps the implementation simple).
 - Re-running on the same day does **not** duplicate rows (idempotent on

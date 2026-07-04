@@ -1,6 +1,13 @@
 // gh-throughput: turn the throughput CSV into a single self-contained HTML
 // dashboard. All data is inlined as JSON (no fetch), so the file works from
 // file://, a Wiki attachment, or GitHub Pages identically.
+//
+// The data math (parseCsv/computeSeries/…) is pure. Presentation lives in an
+// external template file (dashboard.template.html) so callers can restyle the
+// dashboard wholesale via the action's `template-path` input; renderHtml only
+// injects data into that template. loadTemplate() is the single I/O touch point.
+
+import fs from "node:fs";
 
 // Fixed categorical palette. Assignees map onto it deterministically so the
 // same person keeps the same color across runs.
@@ -132,106 +139,43 @@ function safeJson(value) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
-export function renderHtml(csvContent, { maWindow = 7, repo = "" } = {}) {
+function escapeHtml(str) {
+  return str.replace(
+    /[&<>]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
+  );
+}
+
+// Read the HTML template. With no path, the bundled default sitting next to this
+// module is used (resolved via import.meta.url so it works from any cwd, e.g.
+// when the action runs from a different working directory). A caller-supplied
+// path lets users ship their own design.
+export function loadTemplate(templatePath) {
+  const source =
+    templatePath || new URL("./dashboard.template.html", import.meta.url);
+  return fs.readFileSync(source, "utf8");
+}
+
+// Inject the computed series into the template. The template owns all markup
+// and chart configuration; renderHtml only fills the {{TITLE}} and {{DATA}}
+// placeholders. String replacements use function replacers so "$" sequences in
+// the data are never interpreted as replacement patterns.
+export function renderHtml(
+  csvContent,
+  {
+    maWindow = 7,
+    repo = "",
+    template = loadTemplate(),
+    generatedAt = "",
+    timezone = "UTC",
+  } = {},
+) {
   const rows = parseCsv(csvContent);
   const series = computeSeries(rows, maWindow);
-  const data = { ...series, maWindow, repo };
+  const data = { ...series, maWindow, repo, generatedAt, timezone };
+  const title = `Throughput${repo ? ` — ${repo}` : ""}`;
 
-  const cdn = {
-    chart: "https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js",
-    hammer: "https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js",
-    zoom: "https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js",
-  };
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Throughput${repo ? ` — ${repo}` : ""}</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; font-family: system-ui, sans-serif; }
-  header { padding: 12px 16px; border-bottom: 1px solid rgba(128,128,128,.3); }
-  h1 { font-size: 1rem; margin: 0; font-weight: 600; }
-  .hint { font-size: .8rem; opacity: .7; margin-top: 4px; }
-  .wrap { padding: 16px; height: 78vh; box-sizing: border-box; }
-  button { font: inherit; padding: 4px 10px; margin-left: 8px; cursor: pointer; }
-</style>
-</head>
-<body>
-<header>
-  <h1>Issue/PR Throughput${repo ? ` — ${repo}` : ""}</h1>
-  <div class="hint">
-    Faint points = daily actuals · thick line = ${maWindow}-day moving average ·
-    dashed = team average · bars = open-issue backlog (right axis).
-    Scroll to zoom, drag to pan.
-    <button id="reset">Reset zoom</button>
-  </div>
-</header>
-<div class="wrap"><canvas id="chart"></canvas></div>
-<script src="${cdn.chart}"></script>
-<script src="${cdn.hammer}"></script>
-<script src="${cdn.zoom}"></script>
-<script>
-const DATA = ${safeJson(data)};
-const datasets = [];
-for (const a of DATA.assignees) {
-  // Faint actuals as points only (line type + showLine:false keeps the x axis
-  // categorical; a scatter type would force a linear x axis and drop the data).
-  datasets.push({
-    type: "line", label: a.login + " (actual)", data: a.raw,
-    backgroundColor: a.color + "55", borderColor: a.color + "55",
-    pointRadius: 3, pointHoverRadius: 4, showLine: false,
-    spanGaps: false, yAxisID: "y",
-  });
-  datasets.push({
-    type: "line", label: a.login + " (avg)", data: a.ma,
-    borderColor: a.color, backgroundColor: a.color,
-    borderWidth: 2.5, pointRadius: 0, tension: 0.25, yAxisID: "y",
-  });
-}
-datasets.push({
-  type: "line", label: "Team average", data: DATA.teamMA,
-  borderColor: "#6b7280", borderDash: [6, 4], borderWidth: 2,
-  pointRadius: 0, tension: 0.25, yAxisID: "y",
-});
-datasets.push({
-  type: "bar", label: "Backlog (open issues)", data: DATA.backlog,
-  backgroundColor: "rgba(148,163,184,.35)", borderColor: "rgba(148,163,184,.6)",
-  borderWidth: 1, yAxisID: "y1", order: 99,
-});
-
-const chart = new Chart(document.getElementById("chart"), {
-  data: { labels: DATA.dates, datasets },
-  options: {
-    responsive: true, maintainAspectRatio: false,
-    interaction: { mode: "nearest", intersect: false },
-    stacked: false,
-    scales: {
-      x: { type: "category", title: { display: true, text: "Date" } },
-      y: {
-        type: "linear", position: "left", beginAtZero: true,
-        title: { display: true, text: "Daily closed Issue/PR" },
-      },
-      y1: {
-        type: "linear", position: "right", beginAtZero: true,
-        grid: { drawOnChartArea: false },
-        title: { display: true, text: "Backlog (open issues)" },
-      },
-    },
-    plugins: {
-      legend: { position: "bottom" },
-      zoom: {
-        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x" },
-        pan: { enabled: true, mode: "x" },
-      },
-    },
-  },
-});
-document.getElementById("reset").addEventListener("click", () => chart.resetZoom());
-</script>
-</body>
-</html>
-`;
+  return template
+    .replaceAll("{{TITLE}}", () => escapeHtml(title))
+    .replaceAll("{{DATA}}", () => safeJson(data));
 }
