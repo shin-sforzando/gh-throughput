@@ -83,7 +83,10 @@ runs:
         set -euo pipefail
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add "$CSV_PATH" "$HTML_PATH"
+        # Force-add: the metrics are the Action's own output, so a broad ignore
+        # pattern in the host repo (e.g. *.csv from the gitignore.io Data set)
+        # must not block committing them.
+        git add -f "$CSV_PATH" "$HTML_PATH"
         # Skip an empty commit when nothing changed (e.g. a same-day re-run).
         if git diff --cached --quiet; then
           echo "No metric changes to commit."
