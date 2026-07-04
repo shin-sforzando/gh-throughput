@@ -53,6 +53,7 @@ UTC calendar day.
 | `track`          | –        | `both`                             | `issue`, `pr`, or `both`.                                        |
 | `csv-path`       | –        | `metrics/throughput.csv`           | Where the CSV is persisted.                                      |
 | `html-path`      | –        | `metrics/throughput.html`          | Where the HTML dashboard is written.                             |
+| `branch`         | –        | _(empty → checked-out branch)_     | Dedicated orphan branch to commit metrics to (e.g. `metrics`). Use it when the default branch requires pull requests. |
 | `timezone`       | –        | `UTC`                              | IANA timezone deciding the "today" boundary (e.g. `Asia/Tokyo`). |
 | `ma-window`      | –        | `7`                                | Moving-average window in days.                                   |
 | `commit`         | –        | `true`                             | Whether to commit and push the generated files.                  |
@@ -114,6 +115,18 @@ Splitting credit is a future extension.
 
 `contents: write` is required in the calling workflow when `commit: true`; without it the push fails with an error pointing at this setting.
 Because a `permissions:` block sets every unlisted scope to `none`, also grant `issues: read` and `pull-requests: read` — the Search API needs them, and on a private repository the aggregation otherwise fails with a 403.
+
+### Protected default branches
+
+If the default branch requires pull requests (a branch ruleset or protection rule), the Action cannot push to it directly and the run fails.
+Set the `branch` input to a dedicated name (e.g. `branch: metrics`) and the Action commits to that **orphan** branch instead — it holds only the metrics, is created on first run, and never touches the protected branch. View the dashboard from that branch (or serve it via GitHub Pages).
+
+```yaml
+- uses: shin-sforzando/gh-throughput@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    branch: metrics
+```
 
 ### Cross-repo aggregation is out of scope for now.
 

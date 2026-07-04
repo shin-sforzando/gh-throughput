@@ -29,6 +29,10 @@ inputs:
     description: "Where the HTML dashboard is written."
     required: false
     default: "metrics/throughput.html"
+  branch:
+    description: "Dedicated orphan branch to commit metrics to (e.g. metrics). Empty commits to the checked-out branch. Use this when the default branch requires pull requests."
+    required: false
+    default: ""
   timezone:
     description: 'IANA timezone deciding the "today" boundary (e.g. Asia/Tokyo). UTC by default.'
     required: false
@@ -48,16 +52,16 @@ inputs:
 
 outputs:
   csv-path:
-    description: "Path actually written for the CSV."
-    value: ${{ steps.collect.outputs.csv-path }}
+    description: "Path actually written for the CSV (relative to the metrics working directory)."
+    value: ${{ steps.run.outputs.csv-path }}
   html-path:
-    description: "Path actually written for the HTML dashboard."
-    value: ${{ steps.collect.outputs.html-path }}
+    description: "Path actually written for the HTML dashboard (relative to the metrics working directory)."
+    value: ${{ steps.run.outputs.html-path }}
 
 runs:
   using: composite
   steps:
-    - id: collect
+    - id: run
       shell: bash
       # Inputs are passed as INPUT_* env vars, mirroring how JS actions receive
       # them, so the plain Node script can read process.env directly.
@@ -70,30 +74,63 @@ runs:
         INPUT_HTML_PATH: ${{ inputs.html-path }}
         INPUT_TIMEZONE: ${{ inputs.timezone }}
         INPUT_MA_WINDOW: ${{ inputs.ma-window }}
-      run: node "$GITHUB_ACTION_PATH/src/collect.mjs"
-
-    - id: commit
-      if: ${{ inputs.commit == 'true' }}
-      shell: bash
-      env:
-        CSV_PATH: ${{ steps.collect.outputs.csv-path }}
-        HTML_PATH: ${{ steps.collect.outputs.html-path }}
+        BRANCH: ${{ inputs.branch }}
+        DO_COMMIT: ${{ inputs.commit }}
         COMMIT_MESSAGE: ${{ inputs.commit-message }}
       run: |
         set -euo pipefail
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        # Decide where metrics live. With `branch`, use a dedicated orphan data
+        # branch checked out in a separate worktree, so a default branch that
+        # requires pull requests is never touched. Otherwise operate directly in
+        # the checked-out workspace (backward-compatible default).
+        if [ -n "$BRANCH" ]; then
+          WORKDIR="$RUNNER_TEMP/gh-throughput-branch"
+          rm -rf "$WORKDIR"
+          # Explicit refspec so the remote-tracking ref updates regardless of
+          # the (possibly narrowed) fetch config actions/checkout leaves behind.
+          git fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" --quiet || true
+          if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+            git worktree add --quiet "$WORKDIR" -B "$BRANCH" "origin/$BRANCH"
+          else
+            # Create the branch with no history and only the metrics in it.
+            git worktree add --quiet --no-checkout --detach "$WORKDIR"
+            git -C "$WORKDIR" checkout --quiet --orphan "$BRANCH"
+            git -C "$WORKDIR" rm -rf --cached . >/dev/null 2>&1 || true
+          fi
+        else
+          WORKDIR="$GITHUB_WORKSPACE"
+        fi
+
+        # Collect/append and render inside the chosen working directory, so the
+        # CSV accumulates against whatever history already exists there.
+        ( cd "$WORKDIR" && node "$GITHUB_ACTION_PATH/src/collect.mjs" )
+
+        if [ "$DO_COMMIT" != "true" ]; then
+          echo "commit=false; skipping commit."
+          exit 0
+        fi
+
+        cd "$WORKDIR"
         # Force-add: the metrics are the Action's own output, so a broad ignore
         # pattern in the host repo (e.g. *.csv from the gitignore.io Data set)
         # must not block committing them.
-        git add -f "$CSV_PATH" "$HTML_PATH"
+        git add -f "$INPUT_CSV_PATH" "$INPUT_HTML_PATH"
         # Skip an empty commit when nothing changed (e.g. a same-day re-run).
         if git diff --cached --quiet; then
           echo "No metric changes to commit."
           exit 0
         fi
         git commit -m "$COMMIT_MESSAGE"
-        if ! git push; then
-          echo "::error::git push failed. Ensure the calling workflow sets 'permissions: contents: write'."
+        push_failed=0
+        if [ -n "$BRANCH" ]; then
+          git push origin "HEAD:$BRANCH" || push_failed=1
+        else
+          git push || push_failed=1
+        fi
+        if [ "$push_failed" = "1" ]; then
+          echo "::error::git push failed. Ensure the workflow sets 'permissions: contents: write'. If the target branch requires pull requests (a branch ruleset), commit to a dedicated data branch instead via the 'branch' input."
           exit 1
         fi
