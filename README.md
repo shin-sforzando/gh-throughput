@@ -20,9 +20,13 @@ on:
     - cron: "0 0 * * *" # 00:00 UTC = 09:00 JST daily
   workflow_dispatch:
 
-# Required so the Action can commit the CSV/HTML back to the repo.
+# A permissions block makes every unlisted scope `none`, so declare the read
+# scopes the Search API needs (issues / pull requests) next to contents: write,
+# which is used to commit the CSV/HTML back to the repo.
 permissions:
   contents: write
+  issues: read
+  pull-requests: read
 
 jobs:
   throughput:
@@ -106,10 +110,10 @@ If a day exceeds 1000 matches, counts may be truncated and a warning is logged.
 Co-assigned items count for every assignee (simple whole-count model).
 Splitting credit is a future extension.
 
-### `permissions: contents: write` is required
+### Required permissions
 
-in the calling workflow when `commit: true`.
-Without it the push fails with an error pointing at this setting.
+`contents: write` is required in the calling workflow when `commit: true`; without it the push fails with an error pointing at this setting.
+Because a `permissions:` block sets every unlisted scope to `none`, also grant `issues: read` and `pull-requests: read` — the Search API needs them, and on a private repository the aggregation otherwise fails with a 403.
 
 ### Cross-repo aggregation is out of scope for now.
 

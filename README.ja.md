@@ -21,9 +21,13 @@ on:
     - cron: "0 0 * * *" # 00:00 UTC = 09:00 JST(毎日)
   workflow_dispatch:
 
-# Action が CSV/HTML をリポジトリへ commit できるように必須です。
+# permissions ブロックを書くと未記載スコープはすべて none になるため、
+# CSV/HTML の commit 用 contents: write に加え、Search API が必要とする
+# issues / pull-requests の read も明示する。
 permissions:
   contents: write
+  issues: read
+  pull-requests: read
 
 jobs:
   throughput:
@@ -102,10 +106,10 @@ backlog は各実行時点のスナップショットです。意味のある時
 共同アサインされた項目は各担当者にカウントされます(単純な全員加算方式)。
 按分は将来の拡張点です。
 
-### `permissions: contents: write` が必須
+### 必要な permissions
 
-`commit: true` のとき、呼び出し側ワークフローに必要です。
-これが無い場合、push はこの設定を指し示すエラーで失敗します。
+`commit: true` のとき `contents: write` が呼び出し側ワークフローに必要です。これが無いと push はこの設定を指し示すエラーで失敗します。
+また `permissions:` ブロックを書くと未記載スコープはすべて `none` になるため、`issues: read` と `pull-requests: read` も付与してください。Search API がこれらを必要とし、private リポジトリでは無いと集計が 403 で失敗します。
 
 ### 他リポジトリ集計は現状スコープ外
 
