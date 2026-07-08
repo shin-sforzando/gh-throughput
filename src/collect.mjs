@@ -41,6 +41,13 @@ function readInputs(env = process.env) {
     templatePath: (env.INPUT_TEMPLATE_PATH || "").trim(),
     timezone: (env.INPUT_TIMEZONE || "UTC").trim(),
     maWindow: Math.max(1, parseInt(env.INPUT_MA_WINDOW || "7", 10) || 7),
+    // How many local days back to aggregate. Default 1 (yesterday) so closures
+    // that happen after a scheduled run are never lost; 0 keeps the legacy
+    // in-progress-today behaviour.
+    lookbackDays: (() => {
+      const n = parseInt(env.INPUT_LOOKBACK_DAYS ?? "1", 10);
+      return Number.isNaN(n) ? 1 : Math.max(0, n);
+    })(),
   };
 }
 
@@ -211,8 +218,13 @@ function appendCsv(csvPath, rows) {
 
 export async function main(env = process.env, now = new Date()) {
   const cfg = readInputs(env);
-  const day = localDate(now, cfg.timezone);
-  const offset = tzOffset(now, cfg.timezone);
+  // Aggregate a fully-completed local day (default: yesterday) so closures that
+  // happen after the scheduled run are never lost. Subtracting whole days keeps
+  // the same wall-clock time on the target date, well inside that local day
+  // (avoid scheduling within ~1h of local midnight in DST zones for this reason).
+  const target = new Date(now.getTime() - cfg.lookbackDays * 86400000);
+  const day = localDate(target, cfg.timezone);
+  const offset = tzOffset(target, cfg.timezone);
 
   // Issues only. PR "closed" is muddier (merges vs closes, and PRs are seldom
   // assigned), and the backlog is issues-only, so keeping throughput to Issues
