@@ -41,6 +41,10 @@ inputs:
     description: "Moving-average window in days."
     required: false
     default: "7"
+  lookback-days:
+    description: "How many days back to aggregate closed Issues. 1 (default) records the previous complete local day, so closures are never lost to run timing regardless of when the schedule fires. 0 aggregates the in-progress current day (legacy behaviour)."
+    required: false
+    default: "1"
   commit:
     description: "Whether to commit and push the generated files."
     required: false
@@ -74,6 +78,7 @@ runs:
         INPUT_TEMPLATE_PATH: ${{ inputs.template-path }}
         INPUT_TIMEZONE: ${{ inputs.timezone }}
         INPUT_MA_WINDOW: ${{ inputs.ma-window }}
+        INPUT_LOOKBACK_DAYS: ${{ inputs.lookback-days }}
         BRANCH: ${{ inputs.branch }}
         DO_COMMIT: ${{ inputs.commit }}
         COMMIT_MESSAGE: ${{ inputs.commit-message }}

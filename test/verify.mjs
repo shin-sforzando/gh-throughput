@@ -43,6 +43,9 @@ async function runDay(dateIso, items, backlog) {
     INPUT_HTML_PATH: htmlPath,
     INPUT_TIMEZONE: "UTC",
     INPUT_MA_WINDOW: "3",
+    // These cases assert same-day rows, so pin lookback to 0 (legacy behaviour).
+    // The default (previous-day) shift is covered by its own test below.
+    INPUT_LOOKBACK_DAYS: "0",
   };
   return main(env, new Date(dateIso));
 }
@@ -88,6 +91,34 @@ await runDay(
   6,
 );
 assert.equal(csvRows().length, 6, "re-run must not duplicate rows");
+
+// Default lookback (1 day): a run "on" 2026-07-10 must record the previous
+// complete day, 2026-07-09 — this is the fix for closures being lost to run timing.
+{
+  const shiftCsv = path.join(work, "shift/throughput.csv");
+  process.env.GH_THROUGHPUT_FIXTURE = fixture([issue("alice")], 4);
+  await main(
+    {
+      INPUT_GITHUB_TOKEN: "x",
+      INPUT_REPO: "shin-sforzando/rendez-vous",
+      INPUT_ASSIGNEES: "",
+      INPUT_CSV_PATH: shiftCsv,
+      INPUT_HTML_PATH: path.join(work, "shift/throughput.html"),
+      INPUT_TIMEZONE: "UTC",
+      INPUT_MA_WINDOW: "3",
+      // INPUT_LOOKBACK_DAYS omitted -> default 1 (yesterday).
+    },
+    new Date("2026-07-10T12:00:00Z"),
+  );
+  const shiftRows = fs
+    .readFileSync(shiftCsv, "utf8")
+    .split("\n")
+    .filter((l) => l.trim() && !l.startsWith("date,"));
+  assert.ok(
+    shiftRows.includes("2026-07-09,alice,1,4"),
+    `default lookback must record the previous day, got: ${shiftRows.join(" | ")}`,
+  );
+}
 
 // HTML sanity: self-contained, has CDN scripts and inlined data.
 const html = fs.readFileSync(htmlPath, "utf8");

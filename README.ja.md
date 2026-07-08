@@ -6,7 +6,7 @@
 データは Action を利用するリポジトリ内に CSV として永続化され、その隣に自己完結型の HTML ダッシュボードが生成されます。
 既定では全員を追跡し、`assignees` 入力で対象を絞れます。
 
-Action の責務は「当日クローズ分を集計 → CSV へ追記 → HTML を生成 → commit & push」までです。
+Action の責務は「前日(完了した1日)のクローズ分を集計 → CSV へ追記 → HTML を生成 → commit & push」までです。
 生成した HTML を**どこに表示するか**(GitHub Pages、Wiki 添付、あるいはローカルで直接開くだけ)は利用側に委ねます。
 ダッシュボードは単一ファイルで、`file://`・Wiki・Pages のいずれからでも同じように動作します。
 
@@ -18,6 +18,7 @@ Action の責務は「当日クローズ分を集計 → CSV へ追記 → HTML 
 name: Throughput
 on:
   schedule:
+    # 1日1回実行できればよい。前日を集計する(lookback-days 参照)ため実行時刻は問わない。
     - cron: "0 0 * * *" # 00:00 UTC = 09:00 JST(毎日)
   workflow_dispatch:
 
@@ -40,8 +41,9 @@ jobs:
           timezone: Asia/Tokyo # JST の暦日で集計・記録する
 ```
 
-`timezone: Asia/Tokyo` を指定すると「当日」は JST の暦日となり、CSV の `date` 列にもその現地日が記録されます。
-省略時(デフォルト `UTC`)はすべて UTC の暦日を基準にします。
+デフォルトでは **前日(完了した1日)** を集計します(`lookback-days: 1`)。日次スループットはその日が終わって初めて確定するため、集計窓を「完了した日」に閉じることで、実行時刻との前後に関係なくクローズが必ずカウントされます。したがって cron はいつ発火してもよく、1日の終わりに合わせる必要はありません。
+
+`timezone: Asia/Tokyo` を指定すると「前日」は JST の暦日となり、CSV の `date` 列にもその現地日が記録されます。省略時(デフォルト `UTC`)はすべて UTC の暦日を基準にします。`lookback-days: 0` にすると従来どおり進行中の当日を集計します。
 
 ## 入力
 
@@ -54,8 +56,9 @@ jobs:
 | `html-path`      | –    | `metrics/throughput.html`          | HTML ダッシュボードの出力先。                                |
 | `template-path`  | –    | _(空 → 同梱の既定テンプレート)_    | ダッシュボードの独自 HTML テンプレート。`{{DATA}}` プレースホルダは必須。 |
 | `branch`         | –    | _(空 → チェックアウト中のブランチ)_ | metrics を commit する専用の orphan ブランチ(例 `metrics`)。default ブランチが PR 必須のときに使う。 |
-| `timezone`       | –    | `UTC`                              | 「当日」の境界を決める IANA タイムゾーン(例: `Asia/Tokyo`)。 |
+| `timezone`       | –    | `UTC`                              | 暦日の境界を決める IANA タイムゾーン(例: `Asia/Tokyo`)。    |
 | `ma-window`      | –    | `7`                                | 移動平均の窓幅(日)。                                         |
+| `lookback-days`  | –    | `1`                                | クローズIssueを何日前まで遡って集計するか。`1` は前日(完了した1日)を記録し実行時刻に依存しない。`0` は進行中の当日を集計。 |
 | `commit`         | –    | `true`                             | 生成物を commit / push するか。                              |
 | `commit-message` | –    | `chore: update throughput metrics` | commit メッセージ。                                          |
 
@@ -74,10 +77,10 @@ date,assignee,closed,backlog
 2026-07-01,bob,1,8
 ```
 
-- `date` — 設定した `timezone` における暦日(`YYYY-MM-DD`)。
+- `date` — 設定した `timezone` における集計対象の暦日(`YYYY-MM-DD`)。デフォルトでは前日(`lookback-days` 参照)。
 - `assignee` — GitHub ユーザー名。**空**の値は番兵行で、その日に誰もクローズしなかった場合に backlog だけを担持します(backlog の時系列を途切れさせないため)。
 - `closed` — その日にそのユーザーがクローズした Issue 数。
-- `backlog` — その時点のリポジトリ全体のオープンIssue数。同じ日の全行で同値です(冗長ですが実装をシンプルに保つため)。
+- `backlog` — **実行時点**のリポジトリ全体のオープンIssue数を、集計対象日の行に記録します(前日終了時点 ≒ 実行時点のスナップショットで近似)。同じ日の全行で同値です(冗長ですが実装をシンプルに保つため)。
 - 同じ日に再実行しても行は重複しません(`date` + `assignee` について冪等)。
 
 ## ダッシュボード

@@ -6,7 +6,7 @@ A reusable **composite GitHub Action** that visualizes per-assignee daily closed
 Data is persisted as a CSV inside the repository that uses the Action, and a self-contained HTML dashboard is generated alongside it.
 Track everyone by default, or narrow the set with the `assignees` input.
 
-The Action's responsibility ends at "aggregate today's closed items → append to CSV → render HTML → commit & push".
+The Action's responsibility ends at "aggregate the previous complete day's closed items → append to CSV → render HTML → commit & push".
 **Where** you display the HTML (GitHub Pages, Wiki attachment, or just opening it locally) is left to you — the dashboard is a single file that runs the same from `file://`, a Wiki, or Pages.
 
 ## Usage
@@ -17,6 +17,8 @@ Add one step to a workflow after `actions/checkout`:
 name: Throughput
 on:
   schedule:
+    # Runs once a day; the exact time does not matter because the Action
+    # aggregates the previous complete day (see lookback-days).
     - cron: "0 0 * * *" # 00:00 UTC = 09:00 JST daily
   workflow_dispatch:
 
@@ -39,9 +41,16 @@ jobs:
           timezone: Asia/Tokyo # aggregate & record by the JST calendar day
 ```
 
-With `timezone: Asia/Tokyo`, "today" is the JST calendar day and the CSV `date`
-column records that local day. Omit it (default `UTC`) to key everything off the
-UTC calendar day.
+By default the Action aggregates the **previous complete day** (`lookback-days: 1`).
+A daily throughput number is only meaningful once the day is over, and closing
+this window means a closure is counted no matter when — relative to the run — it
+happened. So the schedule can fire at any convenient time; it never has to line up
+with the end of the day.
+
+With `timezone: Asia/Tokyo`, "the previous day" is the JST calendar day and the
+CSV `date` column records that local day. Omit `timezone` (default `UTC`) to key
+everything off the UTC calendar day. Set `lookback-days: 0` to fall back to
+aggregating the in-progress current day (legacy behaviour).
 
 ## Inputs
 
@@ -54,8 +63,9 @@ UTC calendar day.
 | `html-path`      | –        | `metrics/throughput.html`          | Where the HTML dashboard is written.                             |
 | `template-path`  | –        | _(empty → bundled default)_        | Custom HTML dashboard template. Must keep the `{{DATA}}` placeholder. |
 | `branch`         | –        | _(empty → checked-out branch)_     | Dedicated orphan branch to commit metrics to (e.g. `metrics`). Use it when the default branch requires pull requests. |
-| `timezone`       | –        | `UTC`                              | IANA timezone deciding the "today" boundary (e.g. `Asia/Tokyo`). |
+| `timezone`       | –        | `UTC`                              | IANA timezone deciding the calendar-day boundary (e.g. `Asia/Tokyo`). |
 | `ma-window`      | –        | `7`                                | Moving-average window in days.                                   |
+| `lookback-days`  | –        | `1`                                | How many days back to aggregate closed Issues. `1` records the previous complete day (run timing does not matter); `0` aggregates the in-progress current day. |
 | `commit`         | –        | `true`                             | Whether to commit and push the generated files.                  |
 | `commit-message` | –        | `chore: update throughput metrics` | Commit message.                                                  |
 
@@ -74,13 +84,16 @@ date,assignee,closed,backlog
 2026-07-01,bob,1,8
 ```
 
-- `date` — calendar day in the configured `timezone` (`YYYY-MM-DD`).
+- `date` — the aggregated calendar day in the configured `timezone` (`YYYY-MM-DD`);
+  by default the previous complete day (see `lookback-days`).
 - `assignee` — GitHub username. An **empty** value is a sentinel row that only
   carries the backlog for a day on which no assignee closed anything (keeps the
   backlog series continuous).
 - `closed` — Issues that user closed that day.
-- `backlog` — repository-wide open-issue count at that time. It is the same for
-  every row of the same day (redundant, but keeps the implementation simple).
+- `backlog` — repository-wide open-issue count captured **at run time**, recorded
+  against the aggregated day's row (the end of the previous day ≈ the current
+  snapshot). It is the same for every row of the same day (redundant, but keeps
+  the implementation simple).
 - Re-running on the same day does **not** duplicate rows (idempotent on
   `date` + `assignee`).
 
