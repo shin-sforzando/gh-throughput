@@ -7,6 +7,7 @@ node = "24"
 biome = "2.5.2"
 lefthook = "2.1.9"
 markdownlint-cli2 = "0.23.0"
+yq = "4.53.3"
 
 [tasks.check]
 description = "Lint & format check (Biome)"
@@ -23,6 +24,20 @@ run = 'markdownlint-cli2 "**/*.md"'
 [tasks.test]
 description = "Run the offline verification harness"
 run = "node test/verify.mjs"
+
+# The bulk of this Action is a shell script embedded in YAML, which no linter
+# sees by default. Extract it and let bash parse it, so a typo cannot ship.
+[tasks.lint-action]
+description = "Validate action.yml and syntax-check its embedded shell script"
+# mise runs inline tasks with `sh -c`, which is dash on Linux and has no
+# `pipefail`. Ask for bash explicitly -- the script under test is bash anyway.
+shell = "bash -c"
+run = '''
+set -euo pipefail
+script="$(yq -e -r '.runs.steps[0].run' action.yml)"
+printf '%s\n' "$script" | bash -n -
+echo "action.yml: YAML parsed and embedded shell script is syntactically valid."
+'''
 
 [tasks.setup]
 description = "Install git hooks via lefthook"

@@ -141,6 +141,10 @@ Set the `branch` input to a dedicated name (e.g. `branch: metrics`) and the Acti
     branch: metrics
 ```
 
+### Self-hosted runners
+
+The Action works on self-hosted runners with no extra setup. It never writes to the global git config, so a runner whose `HOME` is missing, unset, or read-only does not break the run, and the runner's own git configuration is left untouched.
+
 ### Cross-repo aggregation is out of scope for now.
 
 The `repo` input exists, but the default `GITHUB_TOKEN` can only write/read its own repository; aggregating a _different_ repository would require a fine-grained PAT with read access to it.

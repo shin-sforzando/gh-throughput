@@ -84,8 +84,21 @@ runs:
         COMMIT_MESSAGE: ${{ inputs.commit-message }}
       run: |
         set -euo pipefail
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        # Defence in depth, not the actual fix. What broke self-hosted runners
+        # was writing the global config (`git config --global`), and that is
+        # gone: identity now travels per-command via `-c` further down. Reading
+        # a global config is safe even when HOME is unset or points nowhere, so
+        # nothing below strictly needs this block -- it only shields any tool
+        # in this step that does insist on a real home directory. The condition
+        # keeps a usable HOME untouched, so a runner's legitimate global config
+        # (safe.directory etc.) still applies.
+        if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ] || [ ! -w "$HOME" ]; then
+          HOME="${RUNNER_TEMP:-/tmp}/gh-throughput-home"
+          mkdir -p "$HOME"
+          export HOME
+          echo "::warning::HOME was unusable; using $HOME for this step."
+        fi
 
         # Decide where metrics live. With `branch`, use a dedicated orphan data
         # branch checked out in a separate worktree, so a default branch that
@@ -128,7 +141,12 @@ runs:
           echo "No metric changes to commit."
           exit 0
         fi
-        git commit -m "$COMMIT_MESSAGE"
+        # Identity is passed per-command rather than written to the global
+        # config: `-c` needs no config file at all, so the commit works no
+        # matter how HOME is set up and the runner's git config stays untouched.
+        git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "$COMMIT_MESSAGE"
         push_failed=0
         if [ -n "$BRANCH" ]; then
           git push origin "HEAD:$BRANCH" || push_failed=1
