@@ -12,6 +12,11 @@ pre-commit:
       glob: "*.md"
       run: mise exec -- markdownlint-cli2 --fix {staged_files}
       stage_fixed: true
+    # Spell check. No --fix exists, so this only reports; add jargon to
+    # codebook.toml (or run `codebook-lsp add <word>`) when it flags a term.
+    codebook:
+      glob: "*.{md,mjs,js,cjs,ts,html,toml,yml,yaml}"
+      run: mise exec -- codebook-lsp lint {staged_files}
     # Sort Claude settings
     sort-claude-settings:
       run: |

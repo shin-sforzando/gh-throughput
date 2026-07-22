@@ -8,6 +8,9 @@ biome = "2.5.2"
 lefthook = "2.1.9"
 markdownlint-cli2 = "0.23.0"
 yq = "4.53.3"
+# Not in the mise registry, so pull the release binary straight from GitHub.
+# Upstream marks the CLI experimental, so pin exactly rather than track latest.
+"github:blopker/codebook" = "0.3.42"
 
 [tasks.check]
 description = "Lint & format check (Biome)"
@@ -20,6 +23,10 @@ run = "biome check --write ."
 [tasks.lint-md]
 description = "Lint Markdown"
 run = 'markdownlint-cli2 "**/*.md"'
+
+[tasks.spell]
+description = "Spell-check the repository (codebook.toml holds the word list)"
+run = "codebook-lsp lint ."
 
 [tasks.test]
 description = "Run the offline verification harness"
