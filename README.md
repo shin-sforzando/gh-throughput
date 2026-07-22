@@ -54,20 +54,20 @@ aggregating the in-progress current day (legacy behaviour).
 
 ## Inputs
 
-| Input            | Required | Default                            | Description                                                      |
-| ---------------- | -------- | ---------------------------------- | ---------------------------------------------------------------- |
-| `github-token`   | ✅       | –                                  | Token for the Search API. `secrets.GITHUB_TOKEN` is expected.    |
-| `repo`           | –        | `${{ github.repository }}`         | Target repository `owner/name`.                                  |
-| `assignees`      | –        | _(empty → auto-detect)_            | Comma-separated GitHub usernames.                                |
-| `csv-path`       | –        | `metrics/throughput.csv`           | Where the CSV is persisted.                                      |
-| `html-path`      | –        | `metrics/throughput.html`          | Where the HTML dashboard is written.                             |
-| `template-path`  | –        | _(empty → bundled default)_        | Custom HTML dashboard template. Must keep the `{{DATA}}` placeholder. |
-| `branch`         | –        | _(empty → checked-out branch)_     | Dedicated orphan branch to commit metrics to (e.g. `metrics`). Use it when the default branch requires pull requests. |
-| `timezone`       | –        | `UTC`                              | IANA timezone deciding the calendar-day boundary (e.g. `Asia/Tokyo`). |
-| `ma-window`      | –        | `7`                                | Moving-average window in days.                                   |
+| Input            | Required | Default                            | Description                                                                                                                                                    |
+| ---------------- | -------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github-token`   | ✅       | –                                  | Token for the Search API. `secrets.GITHUB_TOKEN` is expected.                                                                                                  |
+| `repo`           | –        | `${{ github.repository }}`         | Target repository `owner/name`.                                                                                                                                |
+| `assignees`      | –        | _(empty → auto-detect)_            | Comma-separated GitHub usernames.                                                                                                                              |
+| `csv-path`       | –        | `metrics/throughput.csv`           | Where the CSV is persisted.                                                                                                                                    |
+| `html-path`      | –        | `metrics/throughput.html`          | Where the HTML dashboard is written.                                                                                                                           |
+| `template-path`  | –        | _(empty → bundled default)_        | Custom HTML dashboard template. Must keep the `{{DATA}}` placeholder.                                                                                          |
+| `branch`         | –        | _(empty → checked-out branch)_     | Dedicated orphan branch to commit metrics to (e.g. `metrics`). Use it when the default branch requires pull requests.                                          |
+| `timezone`       | –        | `UTC`                              | IANA timezone deciding the calendar-day boundary (e.g. `Asia/Tokyo`).                                                                                          |
+| `ma-window`      | –        | `7`                                | Moving-average window in days.                                                                                                                                 |
 | `lookback-days`  | –        | `1`                                | How many days back to aggregate closed Issues. `1` records the previous complete day (run timing does not matter); `0` aggregates the in-progress current day. |
-| `commit`         | –        | `true`                             | Whether to commit and push the generated files.                  |
-| `commit-message` | –        | `chore: update throughput metrics` | Commit message.                                                  |
+| `commit`         | –        | `true`                             | Whether to commit and push the generated files.                                                                                                                |
+| `commit-message` | –        | `chore: update throughput metrics` | Commit message.                                                                                                                                                |
 
 ### Outputs
 
