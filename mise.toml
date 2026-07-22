@@ -29,6 +29,9 @@ run = "node test/verify.mjs"
 # sees by default. Extract it and let bash parse it, so a typo cannot ship.
 [tasks.lint-action]
 description = "Validate action.yml and syntax-check its embedded shell script"
+# mise runs inline tasks with `sh -c`, which is dash on Linux and has no
+# `pipefail`. Ask for bash explicitly -- the script under test is bash anyway.
+shell = "bash -c"
 run = '''
 set -euo pipefail
 script="$(yq -e -r '.runs.steps[0].run' action.yml)"
