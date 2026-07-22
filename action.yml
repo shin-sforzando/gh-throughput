@@ -84,8 +84,19 @@ runs:
         COMMIT_MESSAGE: ${{ inputs.commit-message }}
       run: |
         set -euo pipefail
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        # Self-hosted runners can expose a HOME that does not exist or is not
+        # writable (e.g. a service account without a provisioned home), which
+        # makes any git command touching the global config fail outright. Point
+        # git at a writable scratch HOME only in that case, so a runner's
+        # legitimate global config (safe.directory etc.) is left alone when it
+        # is usable.
+        if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ] || [ ! -w "$HOME" ]; then
+          HOME="${RUNNER_TEMP:-/tmp}/gh-throughput-home"
+          mkdir -p "$HOME"
+          export HOME
+          echo "HOME was unusable; using $HOME for this step."
+        fi
 
         # Decide where metrics live. With `branch`, use a dedicated orphan data
         # branch checked out in a separate worktree, so a default branch that
@@ -128,7 +139,12 @@ runs:
           echo "No metric changes to commit."
           exit 0
         fi
-        git commit -m "$COMMIT_MESSAGE"
+        # Identity is passed per-command rather than written to the global
+        # config: `-c` needs no config file at all, so the commit works no
+        # matter how HOME is set up and the runner's git config stays untouched.
+        git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "$COMMIT_MESSAGE"
         push_failed=0
         if [ -n "$BRANCH" ]; then
           git push origin "HEAD:$BRANCH" || push_failed=1

@@ -127,6 +127,11 @@ default ブランチが PR 必須(branch ruleset / protection)の場合、Action
     branch: metrics
 ```
 
+### self-hosted runner
+
+追加設定なしで self-hosted runner でも動作します。
+グローバル git 設定への書き込みを行わないため、`HOME` が存在しない・未設定・書き込み不可な runner でも失敗せず、runner 自身の git 設定を書き換えることもありません。
+
 ### 他リポジトリ集計は現状スコープ外
 
 `repo` 入力は存在しますが、デフォルトの `GITHUB_TOKEN` は自身のリポジトリしか読み書きできません。
