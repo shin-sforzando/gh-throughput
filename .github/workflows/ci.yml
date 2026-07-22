@@ -29,6 +29,9 @@ jobs:
       - name: Lint Markdown
         run: mise run lint-md
 
+      - name: Spell check
+        run: mise run spell
+
       - name: Validate action.yml and its embedded shell
         run: mise run lint-action
 

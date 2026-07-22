@@ -1,0 +1,68 @@
+# Prose here leans British; the few spellings en_us rejects are listed under
+# `words` below rather than loading a second dictionary wholesale.
+dictionaries = ["en_us"]
+
+# Verbatim legal text that nobody may reword, so checking it only ever produces
+# noise: every term it flags would have to be accepted here, permanently
+# weakening the dictionary for the code that actually can be fixed.
+ignore_paths = ["LICENSE"]
+
+# Tokenizer artefacts, not words. Listing them under `words` would poison the
+# dictionary: accepting a garbled token hides a real future typo of that shape.
+# Patterns match against the full source text and a word is skipped only when it
+# falls entirely inside a match, so each pattern has to span the whole garbled
+# token, not merely the punctuation that produced it.
+ignore_patterns = [
+    # Percent-encoded query strings, e.g. `is%3Aopen` in a Search API URL.
+    '%[0-9A-Fa-f]{2}\w*',
+    # Escape sequences glued to the following word inside template literals.
+    '\\n\w*',
+    # Possessives: the tokenizer emits them as one word that no dictionary entry
+    # covers. The base word is still checked wherever it appears on its own.
+    "[A-Za-z]+'s",
+]
+
+words = [
+    "Idxs",
+    "Intl",
+    "JST",
+    "actuals",
+    "anthropics",
+    "artefacts",
+    "backfillable",
+    "basecoat",
+    "beforeend",
+    "chartjs",
+    "cjs",
+    "cli",
+    "colour",
+    "consolas",
+    "cron",
+    "defence",
+    "dogfood",
+    "endfor",
+    "euo",
+    "issuehunt",
+    "jdx",
+    "lefthook",
+    "lfx",
+    "liberapay",
+    "lookback",
+    "markdownlint",
+    "menlo",
+    "mise",
+    "mkdir",
+    "mouseenter",
+    "mouseleave",
+    "neighbouring",
+    "oklab",
+    "patreon",
+    "pipefail",
+    "ratelimit",
+    "refspec",
+    "replacers",
+    "shadcn",
+    "tidelift",
+    "wip",
+    "worktree",
+]
