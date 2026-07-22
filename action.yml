@@ -85,17 +85,19 @@ runs:
       run: |
         set -euo pipefail
 
-        # Self-hosted runners can expose a HOME that does not exist or is not
-        # writable (e.g. a service account without a provisioned home), which
-        # makes any git command touching the global config fail outright. Point
-        # git at a writable scratch HOME only in that case, so a runner's
-        # legitimate global config (safe.directory etc.) is left alone when it
-        # is usable.
+        # Defence in depth, not the actual fix. What broke self-hosted runners
+        # was writing the global config (`git config --global`), and that is
+        # gone: identity now travels per-command via `-c` further down. Reading
+        # a global config is safe even when HOME is unset or points nowhere, so
+        # nothing below strictly needs this block -- it only shields any tool
+        # in this step that does insist on a real home directory. The condition
+        # keeps a usable HOME untouched, so a runner's legitimate global config
+        # (safe.directory etc.) still applies.
         if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ] || [ ! -w "$HOME" ]; then
           HOME="${RUNNER_TEMP:-/tmp}/gh-throughput-home"
           mkdir -p "$HOME"
           export HOME
-          echo "HOME was unusable; using $HOME for this step."
+          echo "::warning::HOME was unusable; using $HOME for this step."
         fi
 
         # Decide where metrics live. With `branch`, use a dedicated orphan data

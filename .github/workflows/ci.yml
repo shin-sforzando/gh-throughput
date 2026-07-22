@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nothing here writes to the repository; the dogfood job commits nothing.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up toolchain
+        uses: jdx/mise-action@v4
+
+      - name: Lint & format check
+        run: mise run check
+
+      - name: Lint Markdown
+        run: mise run lint-md
+
+      - name: Validate action.yml and its embedded shell
+        run: mise run lint-action
+
+      - name: Run verification harness
+        run: mise run test
+
+  # Run the Action against this repository itself, so the composite step is
+  # exercised end to end instead of only being syntax-checked. `commit: false`
+  # keeps it read-only, which is what the read-only permissions above allow.
+  dogfood:
+    runs-on: ubuntu-latest
+    # collect.mjs queries /search/issues, which needs read access to Issues.
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # The self-hosted HOME failure is deliberately not reproduced here: it
+      # would need a broken HOME injected into the composite step, and GitHub
+      # does not document whether a caller step's `env` reaches a composite
+      # action's steps. A test that may silently become a no-op is worse than
+      # no test, so that path stays a manual check on a real self-hosted runner.
+      - name: Run the Action
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          commit: "false"
